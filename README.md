@@ -39,7 +39,7 @@ DynNorm stands for [(bias-corrected) Dynamic Normalization](https://github.com/S
   number = {7},
   pages = {075005},
   author = {Shota Deguchi and Mitsuteru Asai},
-  title = {Dynamic &amp; norm-based weights to normalize imbalance in back-propagated gradients of physics-informed neural networks},
+  title = {Dynamic \& norm-based weights to normalize imbalance in back-propagated gradients of physics-informed neural networks},
   journal = {Journal of Physics Communications}
 }
 ```
