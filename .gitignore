@@ -1,0 +1,7 @@
+# ignored files and directories
+
+__pycache__/
+
+*.svg
+*.png
+*.h5
