@@ -242,10 +242,11 @@ class PINN(tf.keras.Model):
                     p = uvp[:, 2:3]
 
                     # ADFs
-                    phi_nth = rvachev.adf_line_segment(x, y, P1=(0., 1.), P2=(1., 1.), dtype=self.d_type)
-                    phi_sth = rvachev.adf_line_segment(x, y, P1=(0., 0.), P2=(1., 0.), dtype=self.d_type)
-                    phi_est = rvachev.adf_line_segment(x, y, P1=(1., 0.), P2=(1., 1.), dtype=self.d_type)
-                    phi_wst = rvachev.adf_line_segment(x, y, P1=(0., 0.), P2=(0., 1.), dtype=self.d_type)
+                    eps = 1e-8
+                    phi_nth = rvachev.adf_line_segment(x, y, P1=(0.-eps, 1.+eps), P2=(1.+eps, 1.+eps), dtype=self.d_type)
+                    phi_sth = rvachev.adf_line_segment(x, y, P1=(0.-eps, 0.-eps), P2=(1.+eps, 0.-eps), dtype=self.d_type)
+                    phi_est = rvachev.adf_line_segment(x, y, P1=(1.+eps, 0.-eps), P2=(1.+eps, 1.+eps), dtype=self.d_type)
+                    phi_wst = rvachev.adf_line_segment(x, y, P1=(0.-eps, 0.-eps), P2=(0.-eps, 1.+eps), dtype=self.d_type)
 
                     # ADF to Gamma (= Gamma_Dir \cup Gamma_Neu)
                     m = 1   # normalization parameter
@@ -292,30 +293,18 @@ class PINN(tf.keras.Model):
                 )
                 g_Neu_p = 0.   # homogeneous Neumann BC
 
-                # # solution structure for Neumann BC
-                # u_Dir = g_Dir
-                # u_Neu = u - phi_Neu * (u_x * phi_Neu_x + u_y * phi_Neu_y) - phi_Neu * g_Neu
-                # w_Dir = phi_Neu**2 / (phi_Dir**1 + phi_Neu**2)
-                # w_Neu = phi_Dir**1 / (phi_Dir**1 + phi_Neu**2)
-                # u = w_Dir * u_Dir + w_Neu * u_Neu + phi_Dir * phi_Neu**2 * u
-
                 # solutions
                 u = g_Dir_u + phi_Dir_u * u
                 v = g_Dir_v + phi_Dir_v * v
                 # no change in pressure so its more silimar to coupled formulation
                 # p = p - phi_Neu_p * (p_x * phi_Neu_p_x + p_y * phi_Neu_p_y) - phi_Neu_p * g_Neu_p + phi_Neu_p**2 * p
 
-            u_x = tp2.gradient(u, x)
-            u_y = tp2.gradient(u, y)
-            v_x = tp2.gradient(v, x)
-            v_y = tp2.gradient(v, y)
-            p_x = tp2.gradient(p, x)
-            p_y = tp2.gradient(p, y)
+            u_x = tp2.gradient(u, x); u_y = tp2.gradient(u, y)
+            v_x = tp2.gradient(v, x); v_y = tp2.gradient(v, y)
+            p_x = tp2.gradient(p, x); p_y = tp2.gradient(p, y)
             del tp2
-        u_xx = tp1.gradient(u_x, x)
-        u_yy = tp1.gradient(u_y, y)
-        v_xx = tp1.gradient(v_x, x)
-        v_yy = tp1.gradient(v_y, y)
+        u_xx = tp1.gradient(u_x, x); u_yy = tp1.gradient(u_y, y)
+        v_xx = tp1.gradient(v_x, x); v_yy = tp1.gradient(v_y, y)
         del tp1
 
         # operators
@@ -336,11 +325,6 @@ class PINN(tf.keras.Model):
         return u, v, p, r0, r1, r2
 
     def loss_pde(self, x, y):
-        # *_, r0_, r1_, r2_ = self.compute_pde(x, y)
-        # loss = tf.reduce_mean(tf.square(r0_)) \
-        #         + tf.reduce_mean(tf.square(r1_)) \
-        #         + tf.reduce_mean(tf.square(r2_))
-        # return loss
         *_, r0_, r1_, r2_ = self.compute_pde(x, y)
         loss_div = tf.reduce_mean(tf.square(r0_))
         loss_mmt = tf.reduce_mean(tf.square(r1_)) \
@@ -418,13 +402,9 @@ class PINN(tf.keras.Model):
         loss_wst = self.loss_dat(x_wst, y_wst, u_wst, v_wst)
         loss_bc  = (loss_nth + loss_sth + loss_est + loss_wst) / 4. * 0.
         loss_dat = self.loss_dat(x_dat, y_dat, u_dat, v_dat)
-        # loss_glb = loss_pde + loss_bc + loss_dat
         loss_glb = loss_mmt + loss_div + loss_bc + loss_dat
 
         if self.d_norm:
-            # loss_glb = loss_pde \
-            #             + self.gamma_bc_hat * loss_bc \
-            #             + self.gamma_dat_hat * loss_dat
             loss_glb = loss_mmt \
                         + self.gamma_div_hat * loss_div \
                         + self.gamma_bc_hat * loss_bc \
@@ -433,7 +413,6 @@ class PINN(tf.keras.Model):
             loss_glb += self.loss_sr(self._alphas, weight=1.)
         if self.g_enhc:
             loss_glb += self.loss_ge(x_pde, y_pde, weight=1e-4)
-        # return loss_glb, loss_pde, loss_bc, loss_dat
         return loss_glb, loss_mmt, loss_div, loss_bc, loss_dat
 
     @tf.function
@@ -447,14 +426,6 @@ class PINN(tf.keras.Model):
         x_dat, y_dat, u_dat, v_dat,
     ):
         with tf.GradientTape(persistent=True) as tp:
-            # loss_glb, loss_pde, loss_bc, loss_dat = self.loss_glb(
-            #     x_pde, y_pde, 
-            #     x_nth, y_nth, u_nth, v_nth,
-            #     x_sth, y_sth, u_sth, v_sth,
-            #     x_est, y_est, u_est, v_est,
-            #     x_wst, y_wst, u_wst, v_wst,
-            #     x_dat, y_dat, u_dat, v_dat,
-            # )
             loss_glb, loss_mmt, loss_div, loss_bc, loss_dat = self.loss_glb(
                 x_pde, y_pde, 
                 x_nth, y_nth, u_nth, v_nth,
@@ -475,10 +446,8 @@ class PINN(tf.keras.Model):
 
 
 ################################################################################
-# dynamic normalization (or, one of the following)
-# reference: Wang+2021 (https://doi.org/10.1137/20M1318043)
-#            Maddu+2022 (https://dx.doi.org/10.1088/2632-2153/ac3712)
-#            Deguchi+2023
+# bias-corrected dynamic normalization
+# reference: Deguchi+2023 (https://doi.org/10.1088/2399-6528/ace416)
 ################################################################################
 
 
@@ -497,10 +466,6 @@ class PINN(tf.keras.Model):
         Update gamma's (weights of loss components) using gradient norms
         """
 
-        # _grad_glb = tf.zeros(shape=(0))
-        # _grad_pde = tf.zeros(shape=(0))
-        # _grad_bc  = tf.zeros(shape=(0))
-        # _grad_dat = tf.zeros(shape=(0))
         _grad_glb = tf.zeros(shape=(0))
         _grad_mmt = tf.zeros(shape=(0))
         _grad_div = tf.zeros(shape=(0))
@@ -508,14 +473,6 @@ class PINN(tf.keras.Model):
         _grad_dat = tf.zeros(shape=(0))
         for l in range(self.depth):
             with tf.GradientTape(persistent=True) as tp:
-                # loss_glb, loss_pde, loss_bc, loss_dat = self.loss_glb(
-                #     x_pde, y_pde, 
-                #     x_nth, y_nth, u_nth, v_nth,
-                #     x_sth, y_sth, u_sth, v_sth,
-                #     x_est, y_est, u_est, v_est,
-                #     x_wst, y_wst, u_wst, v_wst,
-                #     x_dat, y_dat, u_dat, v_dat,
-                # )
                 loss_glb, loss_mmt, loss_div, loss_bc, loss_dat = self.loss_glb(
                     x_pde, y_pde, 
                     x_nth, y_nth, u_nth, v_nth,
@@ -576,9 +533,10 @@ class PINN(tf.keras.Model):
         _norm_dat = tf.norm(_grad_dat, ord=p)
 
         # compute gamma
-        # gamma_bc  = _norm_pde / _norm_bc
-        gamma_dat = _norm_mmt / _norm_dat
-        gamma_div = _norm_mmt / _norm_div
+        eps = 1e-8
+        # gamma_bc  = _norm_pde / (_norm_bc + eps)
+        gamma_dat = _norm_mmt / (_norm_dat + eps)
+        gamma_div = _norm_mmt / (_norm_div + eps)
 
         # exponential decay
         # gamma_bc = tf.cast(gamma_bc, dtype=tf.float64)
@@ -605,475 +563,3 @@ class PINN(tf.keras.Model):
         self.gamma_div_hat.assign(gamma_div_hat)
 
         return
-
-
-################################################################################
-# Hessian computation
-# reference: Wang+2021 (https://doi.org/10.1137/20M1318043)
-#            Nilsen+2021 (https://doi.org/10.48550/arxiv.1905.05559)
-#            Pealmutter1994 (https://doi.org/10.1162/neco.1994.6.1.147)
-################################################################################
-
-    def feed(
-        self, 
-        x_pde, y_pde, 
-        x_bc,  y_bc,  u_bc
-    ):
-        # pde residual evaluation
-        self.x_pde = x_pde
-        self.y_pde = y_pde
-
-        # bc evaluation
-        self.x_bc = x_bc
-        self.y_bc = y_bc
-        self.u_bc = u_bc
-
-    def flatten(self, vs):
-        """
-        flattens a list of tensors (vs = [v1, v2, ..., vN]) into a 1D tensor
-        """
-        return tf.concat([tf.reshape(v, [-1]) for v in vs], axis=0)
-
-    @tf.function
-    def compute_H(self):
-        """
-        computes the Hessian, applies `Hv_op`'s to `v` via tf.map_fn
-        """
-
-        # # of parameters (or # of weights)
-        P = self._n_params
-        print(f">>> computing the Hessian of size {P}")
-
-        # map
-        H_glb = tf.map_fn(self.Hv_op_glb, tf.eye(P, P, dtype=self.d_type), fn_output_signature=self.d_type)
-        H_pde = tf.map_fn(self.Hv_op_pde, tf.eye(P, P, dtype=self.d_type), fn_output_signature=self.d_type)
-        H_bc  = tf.map_fn(self.Hv_op_bc,  tf.eye(P, P, dtype=self.d_type), fn_output_signature=self.d_type)
-        return H_glb, H_pde, H_bc
-
-    @tf.function
-    def Hv_op_glb(self, v):
-        """
-        Hessian-vector product operation, used via tf.map_fn
-        """
-        with tf.GradientTape(persistent=True) as tp2:
-            with tf.GradientTape(persistent=True) as tp1:
-                loss_glb, loss_pde, loss_bc = self.loss_glb(
-                    self.x_pde, self.y_pde, 
-                    self.x_bc,  self.y_bc,  self.u_bc
-                )
-
-            # 1st order derivatives
-            grad_glb = tp1.gradient(loss_glb, self._params)
-            del tp1
-
-            # flatten
-            grad_glb = self.flatten(grad_glb)
-
-            # product with v
-            vprod_glb = tf.multiply(grad_glb, tf.stop_gradient(v))
-
-        # 2nd order derivatives
-        Hv_glb = tp2.gradient(vprod_glb, self._params)
-        del tp2
-
-        # flatten
-        Hv_glb = self.flatten(Hv_glb)
-
-        return Hv_glb
-
-    @tf.function
-    def Hv_op_pde(self, v):
-        with tf.GradientTape(persistent=True) as tp2:
-            with tf.GradientTape(persistent=True) as tp1:
-                loss_glb, loss_pde, loss_bc = self.loss_glb(
-                    self.x_pde, self.y_pde, 
-                    self.x_bc,  self.y_bc,  self.u_bc
-                )
-
-            # 1st order derivatives
-            grad_pde = tp1.gradient(loss_pde, self._params)
-            del tp1
-
-            # flatten
-            grad_pde = self.flatten(grad_pde)
-
-            # product with v
-            vprod_pde = tf.multiply(grad_pde, tf.stop_gradient(v))
-
-        # 2nd order derivatives
-        Hv_pde = tp2.gradient(vprod_pde, self._params)
-        del tp2
-
-        # flatten
-        Hv_pde = self.flatten(Hv_pde)
-
-        return Hv_pde
-
-    @tf.function
-    def Hv_op_bc(self, v):
-        with tf.GradientTape(persistent=True) as tp2:
-            with tf.GradientTape(persistent=True) as tp1:
-                loss_glb, loss_pde, loss_bc = self.loss_glb(
-                    self.x_pde, self.y_pde, 
-                    self.x_bc,  self.y_bc,  self.u_bc
-                )
-
-            # 1st order derivatives
-            grad_bc = tp1.gradient(loss_bc, self._params)
-            del tp1
-
-            # flatten
-            grad_bc = self.flatten(grad_bc)
-
-            # product with v
-            vprod_bc = tf.multiply(grad_bc, tf.stop_gradient(v))
-
-        # 2nd order derivatives
-        Hv_bc = tp2.gradient(vprod_bc, self._params)
-        del tp2
-
-        # flatten
-        Hv_bc = self.flatten(Hv_bc)
-
-        return Hv_bc
-
-    @tf.function
-    def compute_max_lr(self, track_all=False):
-        """
-        maximum learning rate bounded by the eigenvalus of the Hessian
-        """
-
-        with tf.GradientTape(persistent=True) as tp:
-            loss_glb, loss_pde, loss_bc = self.loss_glb(
-                self.x_pde, self.y_pde, 
-                self.x_bc,  self.y_bc,  self.u_bc
-            )
-
-        # gradient
-        grad_glb = tp.gradient(loss_glb, self._params)
-        grad_pde = tp.gradient(loss_pde, self._params)
-        grad_bc  = tp.gradient(loss_bc,  self._params)
-        del tp
-
-        # flatten
-        grad_glb = self.flatten(grad_glb)
-        grad_pde = self.flatten(grad_pde)
-        grad_bc  = self.flatten(grad_bc)
-
-        # normalized gradient (x = grad / ||grad||2)
-        _x_glb = grad_glb / tf.linalg.norm(grad_glb, ord=2)
-        _x_pde = grad_pde / tf.linalg.norm(grad_pde, ord=2)
-        _x_bc  = grad_bc  / tf.linalg.norm(grad_bc,  ord=2)
-
-        # Hessian
-        H_glb, H_pde, H_bc = self.compute_H()
-
-        if track_all:
-            # eigen decomposition of the Hessian (H = QLQ^{transpose})
-            eigval_glb, eigvec_glb = tf.linalg.eigh(H_glb)
-            eigval_pde, eigvec_pde = tf.linalg.eigh(H_pde)
-            eigval_bc,  eigvec_bc  = tf.linalg.eigh(H_bc)
-
-            # y = Qx
-            _y_glb = tf.linalg.matvec(eigvec_glb, _x_glb)
-            _y_pde = tf.linalg.matvec(eigvec_pde, _x_pde)
-            _y_bc  = tf.linalg.matvec(eigvec_bc,  _x_bc)
-
-            # z = Ly^2
-            _z_glb = tf.multiply(eigval_glb, tf.square(_y_glb))
-            _z_pde = tf.multiply(eigval_pde, tf.square(_y_pde))
-            _z_bc  = tf.multiply(eigval_bc,  tf.square(_y_bc))
-
-            # sum
-            _s_glb = tf.reduce_sum(_z_glb)
-            _s_pde = tf.reduce_sum(_z_pde)
-            _s_bc  = tf.reduce_sum(_z_bc)
-
-            # maximul lr allowed by the Hessian
-            _r_glb = 2. * tf.math.reciprocal(_s_glb)
-            _r_pde = 2. * tf.math.reciprocal(_s_pde)
-            _r_bc  = 2. * tf.math.reciprocal(_s_bc)
-
-            return _r_glb, _r_pde, _r_bc
-
-        else:
-            # eigen decomposition of the Hessian (H = QLQ^{transpose})
-            eigval_glb, eigvec_glb = tf.linalg.eigh(H_glb)
-            # eigval_pde, eigvec_pde = tf.linalg.eigh(H_pde)
-            # eigval_bc,  eigvec_bc  = tf.linalg.eigh(H_bc)
-
-            # y = Qx
-            _y_glb = tf.linalg.matvec(eigvec_glb, _x_glb)
-            # _y_pde = tf.linalg.matvec(eigvec_pde, _x_pde)
-            # _y_bc  = tf.linalg.matvec(eigvec_bc,  _x_bc)
-
-            # z = Ly^2
-            _z_glb = tf.multiply(eigval_glb, tf.square(_y_glb))
-            # _z_pde = tf.multiply(eigval_pde, tf.square(_y_pde))
-            # _z_bc  = tf.multiply(eigval_bc,  tf.square(_y_bc))
-
-            # sum
-            _s_glb = tf.reduce_sum(_z_glb)
-            # _s_pde = tf.reduce_sum(_z_pde)
-            # _s_bc  = tf.reduce_sum(_z_bc)
-
-            # maximul lr allowed by the Hessian
-            _r_glb = 2. * tf.math.reciprocal(_s_glb)
-            # _r_pde = 2. * tf.math.reciprocal(_s_pde)
-            # _r_bc  = 2. * tf.math.reciprocal(_s_bc)
-            _r_pde = 9999.
-            _r_bc  = 9999.
-
-            return _r_glb, _r_pde, _r_bc
-
-
-
-################################################################################
-# exact imposition of boundary conditions
-# reference: Sukumar+2022 (https://doi.org/10.1016/j.cma.2021.114333)
-# the following is implemented in utils.py
-################################################################################
-
-    @tf.function
-    def adf_line_segment(self, x, y, P1, P2):
-        """
-        approximate distance function to a line segment
-
-        args:
-            x, y: coordinates of the point
-            P1, P2: coordinates of the end points of the line segment
-
-        returns:
-            phi: approximate distance function
-        """
-
-        # get positions
-        x1, y1 = P1
-        x2, y2 = P2
-
-        # length of the line segment
-        L = tf.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-        L = tf.cast(L, tf.float64)
-
-        # center of the line segment
-        xc = (x1 + x2) / 2.
-        yc = (y1 + y2) / 2.
-
-        # unit tangential vector
-        tx = (x2 - x1) / L
-        ty = (y2 - y1) / L
-
-        # unit normal vector
-        nx = -ty
-        ny =  tx
-
-        # signed distance function
-        # implicit representation of the line passing through P1 and P2
-        s = 1. / L * ((x - x1) * (y2 - y1) - (y - y1) * (x2 - x1))
-
-        # trimming function
-        # implicit representation of the circle centered at (xc, yc) with radius L/2
-        t = 1. / L * ((L / 2.)**2 - (x - xc)**2 - (y - yc)**2)
-
-        # approximation of the distance function to the segment with end points P1 and P2
-        phi = (s**2 + (((s**4 + t**2)**.5 - t) / 2.)**2)**.5
-
-        return phi
-
-    def merge_two_adfs(self, phi1, phi2, m):
-        """
-        merge two ADFs
-
-        args:
-            phi1, phi2: ADFs
-            m: normalization parameter
-
-        return:
-            phi: merged ADF
-        """
-
-        phi = phi1 * phi2 / (phi1**m + phi2**m)**(1. / m)
-        return phi
-
-    def merge_multiple_adfs(self, phi_list, m):
-        """
-        merge multiple ADFs
-
-        args:
-            phi_list: list of ADFs
-            m: normalization parameter
-
-        return:
-            phi: merged ADF
-        """
-
-        phi = phi_list[0]
-        for i in range(1, len(phi_list)):
-            phi = self.merge_two_adfs(phi, phi_list[i], m)
-        return phi
-
-    def transfinite_interpolation(self, x, y, psi_list, phi_list, mu_list):
-        """
-        transfinite interpolation
-
-        args:
-            x, y: coordinates of the point
-            psi_list: list of Dirichlet boundary conditions
-            phi_list: list of ADFs
-            mu_list: list of mu, the normalization parameter
-
-        return:
-            psi: interpolated Dirichlet boundary condition
-        """
-
-        # psi = sum_i w_i * psi_i, where w_i = phi_i**(-mu_i) / sum_j phi_j**(-mu_j)
-        denominator = 0.
-        for i in range(len(psi_list)):
-            denominator += phi_list[i]**(-mu_list[i])
-
-        psi = 0.
-        for i in range(len(psi_list)):
-            numerator = phi_list[i]**(-mu_list[i])
-            w_i = numerator / denominator
-            psi_i = psi_list[i]
-            psi += w_i * psi_i
-
-        return psi
-
-    def dist(self, x1, y1, x2, y2):
-        return tf.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-
-    def linseg(self, x, y, x1, y1, x2, y2):
-        L = self.dist(x1, y1, x2, y2)
-        xc = (x1 + x2) / 2.
-        yc = (y1 + y2) / 2.
-
-        # signed distance function from x to the line that passes through x1 and x2
-        f = 1. / L * ((x - x1) * (y2 - y1) - (y - y1) * (x2 - x1))
-
-        # trimming
-        t = 1. / L * ((L / 2.)**2 - self.dist(x, y, xc, yc)**2)
-
-        # approximation of the distance function to the segment with end points x1 and x2
-        vphi = tf.sqrt(t**2 + f**4)
-        phi = tf.sqrt(f**2 + 1. / 4. * (vphi - t)**2)
-        return f, t, vphi, phi
-
-    def segments(self):
-        # this is a little more readable, but need to remove `tf.function`
-        # segments = tf.constant(
-        #     [
-        #         [self.lb[0].numpy(), self.lb[1].numpy(), self.lb[0].numpy(), self.ub[1].numpy()],
-        #         [self.lb[0].numpy(), self.ub[1].numpy(), self.ub[0].numpy(), self.ub[1].numpy()],
-        #         [self.ub[0].numpy(), self.ub[1].numpy(), self.ub[0].numpy(), self.lb[1].numpy()],
-        #         [self.ub[0].numpy(), self.lb[1].numpy(), self.lb[0].numpy(), self.lb[1].numpy()]
-        #     ], 
-        #     dtype=tf.float64
-        # )
-
-        # this is faster, but not very readable and need careful check
-        segments = tf.constant(
-            [
-                [0., 0., 0., 1.],
-                [0., 1., 1., 1.],
-                [1., 1., 1., 0.],
-                [1., 0., 0., 0.]
-            ], 
-            dtype=tf.float64
-        )
-
-        return segments
-
-    @tf.function
-    def phi(self, x, y, m=1):
-        """
-        approximate distance function to the boundary
-
-        args:
-            m: normalization parameter (Sukumar+2022: m=1, comput mech community: m=2)
-                higher m gives a better approximation of the exact distance
-                also strong normalization properties in the vicinity
-                however, higher order functions become oscillatory
-        """
-
-        segments = self.segments()
-
-        R = 0.
-        for i in range(len(segments[:,0])):
-            f, t, vphi, phi = self.linseg(
-                x, y, 
-                segments[i, 0], segments[i, 1], segments[i, 2], segments[i, 3]
-            )
-            R += 1. / phi**m
-        R = 1. / R**(1 / m)
-        return R
-
-
-
-    def Dirichlet_BC(self, x, y):
-        # prescribed Dirichlet boundary condition
-        numerator = (tf.exp(-np.pi * y) + tf.exp(np.pi * y)) * tf.sin(np.pi * x)
-        denominator = tf.exp(-np.pi) + tf.exp(np.pi)
-        u = tf.cast(numerator, dtype=tf.float64) / tf.cast(denominator, dtype=tf.float64)
-        return u
-
-
-    # @tf.function
-    # def psi(self, x, y, m=1):
-    #     """
-    #     approximate distance function to the boundary
-
-    #     args:
-    #         m: normalization parameter (Sukumar+2022: m=1, comput mech community: m=2)
-    #             higher m gives a better approximation of the exact distance
-    #             also strong normalization properties in the vicinity
-    #             however, higher order functions become oscillatory
-    #     """
-
-    #     segments = self.segments()
-
-    #     R = 0.
-    #     for i in range(len(segments[:,0])):
-    #         f, t, vphi, phi = self.linseg(
-    #             x, y, 
-    #             segments[i, 0], segments[i, 1], segments[i, 2], segments[i, 3]
-    #         )
-    #         R += 1. / phi**m
-    #     R = 1. / R**(1 / m)
-    #     return R
-
-    @tf.function
-    def psi(self, x, y, m=1):
-        """
-        extension of homogeneous / inhomogeneous Dirichlet boundary condition
-
-        args:
-            m: regularity parameter (denoted as mu in Sukumar+2022)
-                m = 1: Dirichlet condition g is interpolated
-                m = 2: Dirichlet condition g and its normal derivative dg/dn are interpolated
-        """
-
-        segments = self.segments()
-
-        # denominator of weights
-        W = 0.
-        for i in range(len(segments[:,0])):
-            f, t, vphi, phi = self.linseg(
-                x, y, 
-                segments[i, 0], segments[i, 1], segments[i, 2], segments[i, 3]
-            )
-            W += phi**(-m)
-
-        # extension of the Dirichlet boundary condition
-        S = 0.
-        for i in range(len(segments[:,0])):
-            f, t, vphi, phi = self.linseg(
-                x, y, 
-                segments[i, 0], segments[i, 1], segments[i, 2], segments[i, 3]
-            )
-            w = phi**(-m) / W
-            s = self.Dirichlet_BC(x, y)
-            # s = self.Dirichlet_BC(x - segments[i, 0], y - segments[i, 1])
-
-            S += w * s
-        return S
