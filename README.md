@@ -40,11 +40,17 @@ The code has been tested with the following dependencies:
 Please cite us as follows:
 ```bibtex
 @article{Deguchi2025MLST,
-	author={Deguchi, Shota and Asai, Mitsuteru},
-	title={Reliable and efficient inverse analysis using physics-informed neural networks with normalized distance functions and adaptive weight tuning},
-	journal={Machine Learning: Science and Technology},
-	url={https://iopscience.iop.org/article/10.1088/2632-2153/ae1b71},
-	year={2025}
+	doi = {10.1088/2632-2153/ae1b71},
+	url = {https://doi.org/10.1088/2632-2153/ae1b71},
+	year = {2025},
+	month = {nov},
+	publisher = {IOP Publishing},
+	volume = {6},
+	number = {4},
+	pages = {045055},
+	author = {Deguchi, Shota and Asai, Mitsuteru},
+	title = {Reliable and efficient inverse analysis using physics-informed neural networks with normalized distance functions and adaptive weight tuning},
+	journal = {Machine Learning: Science and Technology}
 }
 ```
 ```bibtex
@@ -78,4 +84,5 @@ The reference solution for the shear-driven cavity flow is obtained using the th
 
 ## License
 MIT License
+
 
