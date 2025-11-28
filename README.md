@@ -1,7 +1,7 @@
 ﻿# PINN_HardBC_DynNorm
 This is a TensorFlow implementation of the following paper:
 
-Deguchi, S. and Asai, M.: Reliable and efficient inverse analysis using physics-informed neural networks with normalized distance functions and adaptive weight tuning, *Machine Learning: Science and Technology*, Vol. XX, No. XX, pp. XXX, YYYY ([https://doi.org/10.1088/2632-2153/ae1b71](https://doi.org/10.1088/2632-2153/ae1b71), [arXiv: 2504.18091](https://arxiv.org/abs/2504.18091)).
+Deguchi, S. and Asai, M.: Reliable and efficient inverse analysis using physics-informed neural networks with normalized distance functions and adaptive weight tuning, *Machine Learning: Science and Technology*, Vol. 6, No. 4, pp. 045055, 2025 ([https://doi.org/10.1088/2632-2153/ae1b71](https://doi.org/10.1088/2632-2153/ae1b71), [arXiv: 2504.18091](https://arxiv.org/abs/2504.18091)).
 
 ## Overview
 ```
