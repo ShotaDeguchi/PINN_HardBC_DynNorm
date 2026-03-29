@@ -178,7 +178,8 @@ def adf_ellipse(X, Y, P, a, b, dtype=tf.float64):
 
 
 def join_two_adfs(phi_1, phi_2, m=1):
-    phi = phi_1 * phi_2 / (phi_1**m + phi_2**m)**(1. / m)
+    # phi = (phi_1 * phi_2) / (phi_1**m + phi_2**m)**(1 / m)
+    phi = 1. / (phi_1**(-m) + phi_2**(-m))**(1 / m)
     return phi
 
 
@@ -192,7 +193,7 @@ def join_multiple_adfs(phis, m=1):
 def transfinite_interpolation(gs, phis, mus, method=2):
     if method == 1:
         # method 1 (1st equation, numerically unstable)
-        denom = 0.
+        denom = 1e-16
         for j in range(len(phis)):
             denom += phis[j]**(-mus[j])
 
@@ -211,7 +212,7 @@ def transfinite_interpolation(gs, phis, mus, method=2):
                     w *= phis[j]**mus[j]
             ws.append(w)
 
-        denom = 0.
+        denom = 1e-16
         for w in ws:
             denom += w
 
